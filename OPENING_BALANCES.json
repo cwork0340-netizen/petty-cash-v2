@@ -1,0 +1,43 @@
+{
+  "cutoverDate": "2026-08-12",
+  "cutoverAt": "2026-08-12T17:00:00+08:00",
+  "source": "physical_cash_count",
+  "sourceNote": "Opening cash is based on the physical count on the cutover date. Historical records remain read-only and are excluded from opening ledger calculation.",
+  "companies": {
+    "twbio": {
+      "name": "全瑩",
+      "openingCash": 15943,
+      "openingCountedCash": 15943,
+      "openingDifference": 0
+    },
+    "changying": {
+      "name": "長瑩",
+      "openingCash": 2071,
+      "openingCountedCash": 2071,
+      "openingDifference": 0
+    }
+  },
+  "historicalPolicy": {
+    "includeHistoricalTransactionsInOpeningLedger": false,
+    "preserveHistoricalTabs": true,
+    "unresolvedItemsRemainSeparate": true,
+    "returnedCashIsIncome": false,
+    "unregisteredBeforeCutover": "historical_pending_only",
+    "augustBeforeCutoverStaysLegacy": true
+  },
+  "accessPolicy": {
+    "currentRole": "petty_cash_manager",
+    "displayName": "零用金管理者"
+  },
+  "offlinePolicy": {
+    "allowed": true,
+    "offlineStatus": "pending_sync",
+    "countsAsPostedOnlyAfterServerConfirmation": true,
+    "retryUsesSameRequestId": true
+  },
+  "monthClosePolicy": {
+    "closedRecordsAreImmutable": true,
+    "correctionsUseNewRecord": true,
+    "correctionRequiresOriginalIdAndReason": true
+  }
+}

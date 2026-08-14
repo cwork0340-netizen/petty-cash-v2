@@ -1,0 +1,10 @@
+{
+  "product": "petty-cash-v2-test",
+  "release": "0.1.0-test",
+  "environment": "test-only",
+  "dataPolicy": "Only test data may be written. Production spreadsheet, Apps Script deployment, and production URL are prohibited.",
+  "apiContract": "2026-08-05.v1",
+  "frontendContract": "2026-08-05.v1",
+  "requiredGate": "TEST_GATE.md",
+  "updatedAt": "2026-08-05"
+}
