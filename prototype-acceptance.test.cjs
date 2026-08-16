@@ -66,9 +66,9 @@ test('backend read-only mode maps test API records without enabling writes', () 
 });
 
 test('backend saves are single-flight and keep the last confirmed ledger while refreshing', () => {
-  assert.match(html, /ledgerByCompany:\{\},saving:false/);
-  assert.match(html, /if\(backend\.saving\)throw new Error\('這筆資料正在儲存，請勿重複點選。'\)/);
-  assert.match(html, /const requestId=backendRequestId\(\);backend\.saving=true/);
+  assert.match(html, /ledgerByCompany:\{\}\};\s*let uiBusy=false;/);
+  assert.match(html, /if\(uiBusy\)throw new Error\('這筆資料正在儲存，請勿重複點選。'\)/);
+  assert.match(html, /const requestId=backendRequestId\(\);beginSaving\(\)/);
   assert.match(html, /setSavingControls\(true\)/);
   assert.match(html, /\[data-save\]/);
   assert.match(html, /Object\.prototype\.hasOwnProperty\.call\(backend\.ledgerByCompany,state\.company\)/);
