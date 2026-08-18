@@ -82,3 +82,9 @@ test('prototype prevents render loops and rejects unsafe money values', () => {
   assert.match(html, /value<=MAX_AMOUNT/);
   assert.match(html, /expenseValue===''\|\|changeValue===''\|\|!validAmount/);
 });
+
+test('company switching keeps the unsaved-draft warning active', () => {
+  assert.match(html, /window\.requestCompanySwitch=function/);
+  assert.match(html, /尚有未儲存資料/);
+  assert.doesNotMatch(html, /window\.showCompanies=showCompanies/);
+});
