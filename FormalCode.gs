@@ -23,12 +23,12 @@ var FORMAL_SHEETS = {
 // Keep operational tab names ASCII-only so the backend is stable across
 // different browser, operating-system, and Google Workspace language settings.
 FORMAL_SHEETS = {
-  opening: 'V2_OPENING',
-  twbio: 'V2_TWBIO_TRANSACTIONS',
-  changying: 'V2_CHANGYING_TRANSACTIONS',
-  counts: 'V2_CASH_COUNTS',
-  audit: 'V2_AUDIT_LOG',
-  historical: 'V2_HISTORICAL_PENDING'
+  opening: '開帳資料',
+  twbio: '全瑩交易',
+  changying: '長瑩交易',
+  counts: '現金盤點',
+  audit: '稽核紀錄',
+  historical: '歷史待整理'
 };
 
 var FORMAL_COMPANIES = {

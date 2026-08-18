@@ -8,9 +8,9 @@ const code = fs.readFileSync(path.join(__dirname, 'FormalCode.gs'), 'utf8');
 test('formal candidate backend binds the new workbook through a script property', () => {
   assert.match(code, /FORMAL_SPREADSHEET_ID/);
   assert.doesNotMatch(code, /1VMo9VX_hesKfQBaf_GbYhSzhJDoNP0TuhcSbFzOnZ1Q/);
-  assert.match(code, /V2_OPENING/);
-  assert.match(code, /V2_TWBIO_TRANSACTIONS/);
-  assert.match(code, /V2_CHANGYING_TRANSACTIONS/);
+  assert.match(code, /開帳資料/);
+  assert.match(code, /全瑩交易/);
+  assert.match(code, /長瑩交易/);
   assert.match(code, /V2_開帳/);
   assert.match(code, /V2_全瑩_交易/);
   assert.match(code, /V2_長瑩_交易/);
