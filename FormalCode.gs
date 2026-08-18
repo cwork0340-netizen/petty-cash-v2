@@ -10,6 +10,7 @@ var FORMAL_API_VERSION = 'formal-v2-2026-08-12';
 var FORMAL_SPREADSHEET_PROPERTY = 'FORMAL_SPREADSHEET_ID';
 var FORMAL_API_KEY_PROPERTY = 'FORMAL_API_KEY';
 var FORMAL_CUTOFF_AT = '2026-08-12T17:00:00+08:00';
+/* Legacy localized titles retained only for migration reference:
 var FORMAL_SHEETS = {
   opening: 'V2_開帳',
   twbio: 'V2_全瑩_交易',
@@ -18,6 +19,7 @@ var FORMAL_SHEETS = {
   audit: 'V2_稽核軌跡',
   historical: 'V2_歷史待整理'
 };
+*/
 // Keep operational tab names ASCII-only so the backend is stable across
 // different browser, operating-system, and Google Workspace language settings.
 FORMAL_SHEETS = {
