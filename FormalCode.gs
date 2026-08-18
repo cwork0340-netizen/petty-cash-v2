@@ -8,6 +8,7 @@
 
 var FORMAL_API_VERSION = 'formal-v2-2026-08-12';
 var FORMAL_SPREADSHEET_PROPERTY = 'FORMAL_SPREADSHEET_ID';
+var FORMAL_API_KEY_PROPERTY = 'FORMAL_API_KEY';
 var FORMAL_CUTOFF_AT = '2026-08-12T17:00:00+08:00';
 var FORMAL_SHEETS = {
   opening: 'V2_開帳',
@@ -25,13 +26,6 @@ var FORMAL_TX_HEADERS = ['id', 'companyId', 'transactionDate', 'transactionType'
 var FORMAL_COUNT_HEADERS = ['id', 'companyId', 'countedAt', 'countedBy', 'ledgerCash', 'actualCash', 'difference', 'reason', 'status', 'createdAt', 'requestId'];
 var FORMAL_AUDIT_HEADERS = ['id', 'companyId', 'entityType', 'entityId', 'action', 'before', 'after', 'reason', 'actorId', 'createdAt'];
 
-// Run once in the dedicated candidate project, then remove or protect this helper.
-// It is intentionally not called by doGet/doPost.
-function configureFormalBackend() {
-  PropertiesService.getScriptProperties().setProperty(FORMAL_SPREADSHEET_PROPERTY, '1VMo9VX_hesKfQBaf_GbYhSzhJDoNP0TuhcSbFzOnZ1Q');
-  return 'configured';
-}
-
 function doGet(e) { return json_(dispatch_(String((e.parameter || {}).action || ''), e.parameter || {})); }
 function doPost(e) {
   try { return json_(dispatch_('', JSON.parse(e.postData.contents || '{}'))); }
@@ -40,9 +34,11 @@ function doPost(e) {
 
 function dispatch_(unusedAction, payload) {
   try {
+    requireFormalApiKey_(payload);
     var action = String(payload.action || '');
     if (action === 'getHomeData') return success_({ home: getHome_(payload) });
     if (action === 'getRecords') return success_({ records: records_(payload) });
+    if (action === 'getAudit') return success_({ audit: getAudit_(payload) });
     if (action === 'addOpening') return addOpening_(payload);
     if (action === 'closePeriod') return closePeriod_(payload);
     if (action === 'addAdvance') return create_(payload, 'advance');
@@ -145,10 +141,12 @@ function closePeriod_(payload) {
 
 function ledger_(companyId, rows) { var total = company_(companyId).openingCash; rows.forEach(function(r) { if (r.cashStatus === 'voided' || r.cashStatus === 'pending_sync') return; if (r.transactionType === 'replenishment') total += r.amount; if (r.transactionType === 'direct_expense') total -= r.amount; if (r.transactionType === 'adjustment') total += (r.direction === 'debit' ? -1 : 1) * Number(r.amount || 0); if (r.transactionType === 'advance') { total -= r.amount; if (r.cashStatus === 'settled') total += Number(r.returnedCash || 0); } }); return total; }
 function records_(payload) { return readTx_(requireCompanyId_(payload.companyId)); }
+function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function readTx_(companyId) { return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function readOpening_() { return objects_(sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']), ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']); }
 function company_(id) { return FORMAL_COMPANIES[requireCompanyId_(id)]; }
 function requireCompanyId_(id) { if (!FORMAL_COMPANIES[id]) throw coded_('invalid_company', 'Unknown company'); return id; }
+function requireFormalApiKey_(payload) { var expected = PropertiesService.getScriptProperties().getProperty(FORMAL_API_KEY_PROPERTY); if (!expected) throw coded_('formal_api_key_not_configured', 'Set FORMAL_API_KEY in Script Properties'); if (!payload || String(payload.formalApiKey || '') !== expected) throw coded_('unauthorized_formal_request', 'Invalid formal backend credential'); }
 function sheet_(name, headers) { var sheet = spreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing V2 sheet: ' + name); if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]); return sheet; }
 function spreadsheet_() { var id = PropertiesService.getScriptProperties().getProperty(FORMAL_SPREADSHEET_PROPERTY); if (!id) throw coded_('not_configured', 'FORMAL_SPREADSHEET_ID is not configured'); return SpreadsheetApp.openById(id); }
 function append_(sheet, headers, obj) { sheet.appendRow(headers.map(function(h) { return obj[h] == null ? '' : typeof obj[h] === 'object' ? JSON.stringify(obj[h]) : obj[h]; })); }
