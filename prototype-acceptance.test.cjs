@@ -5,10 +5,11 @@ const test = require('node:test');
 const html = fs.readFileSync(__dirname + '/index.html', 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>'));
 
-test('V2 prototype parses and permits only the relative test proxy', () => {
+test('V2 prototype parses and permits only same-origin test or formal proxies', () => {
   assert.doesNotThrow(() => new Function(script));
   assert.doesNotMatch(html, /script\.google\.com|\/api\/gas|petty-cash-pwa\.vercel\.app/);
-  assert.match(html, /fetch\(`\/api\/test-gas\?action=\$\{action\}/);
+  assert.match(html, /const endpoint=formalMode\?'\/api\/formal-gas':'\/api\/test-gas'/);
+  assert.match(html, /formalMode\?'\/api\/formal-gas':'\/api\/test-gas'/);
   assert.match(html, /testMode==='backend'/);
 });
 
