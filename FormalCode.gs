@@ -18,6 +18,17 @@ var FORMAL_SHEETS = {
   audit: 'V2_稽核軌跡',
   historical: 'V2_歷史待整理'
 };
+// Keep operational tab names ASCII-only so the backend is stable across
+// different browser, operating-system, and Google Workspace language settings.
+FORMAL_SHEETS = {
+  opening: 'V2_OPENING',
+  twbio: 'V2_TWBIO_TRANSACTIONS',
+  changying: 'V2_CHANGYING_TRANSACTIONS',
+  counts: 'V2_CASH_COUNTS',
+  audit: 'V2_AUDIT_LOG',
+  historical: 'V2_HISTORICAL_PENDING'
+};
+
 var FORMAL_COMPANIES = {
   twbio: { name: '全瑩', openingCash: 15943 },
   changying: { name: '長瑩', openingCash: 2071 }
@@ -39,6 +50,7 @@ function dispatch_(unusedAction, payload) {
     if (action === 'getHomeData') return success_({ home: getHome_(payload) });
     if (action === 'getRecords') return success_({ records: records_(payload) });
     if (action === 'getAudit') return success_({ audit: getAudit_(payload) });
+    if (action === 'initializeFormalDatabase') return initializeFormalDatabase_(payload);
     if (action === 'addOpening') return addOpening_(payload);
     if (action === 'closePeriod') return closePeriod_(payload);
     if (action === 'addAdvance') return create_(payload, 'advance');
@@ -50,6 +62,16 @@ function dispatch_(unusedAction, payload) {
     if (action === 'createCorrection') return correction_(payload);
     throw coded_('invalid_action', 'Unsupported formal backend action');
   } catch (error) { return failure_(error); }
+}
+
+function initializeFormalDatabase_(payload) {
+  sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']);
+  sheet_(FORMAL_SHEETS.twbio, FORMAL_TX_HEADERS);
+  sheet_(FORMAL_SHEETS.changying, FORMAL_TX_HEADERS);
+  sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS);
+  sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS);
+  sheet_(FORMAL_SHEETS.historical, ['id', 'companyId', 'originalId', 'originalDate', 'originalType', 'originalAmount', 'status', 'enteredBy', 'createdAt', 'note', 'requestId']);
+  return success_({ initialized: true, apiVersion: FORMAL_API_VERSION });
 }
 
 function confirmSync_(payload) {
