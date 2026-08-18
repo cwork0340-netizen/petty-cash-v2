@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const file = path.join(__dirname, 'formal-cutover', 'OPENING_BALANCES.json');
+const file = path.join(__dirname, 'OPENING_BALANCES.json');
 const opening = JSON.parse(fs.readFileSync(file, 'utf8'));
 
 test('formal cutover uses the physical count as the opening ledger', () => {

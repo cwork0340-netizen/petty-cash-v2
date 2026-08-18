@@ -47,8 +47,8 @@ test('settlement discrepancy requires a reason and remains pending', () => {
 test('backend read-only mode maps test API records without enabling writes', () => {
   assert.match(html, /function backendRecord/);
   assert.match(html, /getRecords','getAudit/);
-  assert.doesNotMatch(html, /Promise\.all\(\['getHomeData','getRecords','getAudit'\]/);
-  assert.match(html, /for\(const action of \['getHomeData','getRecords','getAudit'\]\)/);
+  assert.match(html, /const actions=\['getHomeData','getRecords','getAudit'\]/);
+  assert.match(html, /Promise\.all\(actions\.map\(async action=>/);
   assert.match(html, /const rawRecords=recordsData\?\.records\?\.records\|\|recordsData\?\.records\|\|\[\]/);
   assert.match(html, /const rawAudit=auditData\?\.audit\?\.audit\|\|auditData\?\.audit\|\|\[\]/);
   assert.match(html, /id="simple-receipt"/);
@@ -73,4 +73,12 @@ test('backend saves are single-flight and keep the last confirmed ledger while r
   assert.match(html, /\[data-save\]/);
   assert.match(html, /Object\.prototype\.hasOwnProperty\.call\(backend\.ledgerByCompany,state\.company\)/);
   assert.match(html, /正在儲存…/);
+});
+
+test('prototype prevents render loops and rejects unsafe money values', () => {
+  assert.doesNotMatch(html, /new MutationObserver\(decorateCompanyUI\)/);
+  assert.match(html, /decorateCompanyUI\(\) \}/);
+  assert.match(html, /function validAmount\(value/);
+  assert.match(html, /value<=MAX_AMOUNT/);
+  assert.match(html, /expenseValue===''\|\|changeValue===''\|\|!validAmount/);
 });
