@@ -48,7 +48,7 @@ test('settlement discrepancy requires a reason and remains pending', () => {
 test('backend read-only mode maps test API records without enabling writes', () => {
   assert.match(html, /function backendRecord/);
   assert.match(html, /getRecords','getAudit/);
-  assert.match(html, /const actions=\['getHomeData','getRecords','getAudit'\]/);
+  assert.match(html, /const actions=formalMode\?\['getHomeData','getRecords','getAudit','getHandlers'\]:\['getHomeData','getRecords','getAudit'\]/);
   assert.match(html, /Promise\.all\(actions\.map\(async action=>/);
   assert.match(html, /const rawRecords=recordsData\?\.records\?\.records\|\|recordsData\?\.records\|\|\[\]/);
   assert.match(html, /const rawAudit=auditData\?\.audit\?\.audit\|\|auditData\?\.audit\|\|\[\]/);
@@ -67,7 +67,7 @@ test('backend read-only mode maps test API records without enabling writes', () 
 });
 
 test('backend saves are single-flight and keep the last confirmed ledger while refreshing', () => {
-  assert.match(html, /ledgerByCompany:\{\},saving:false/);
+  assert.match(html, /ledgerByCompany:\{\},handlers:\[\],saving:false/);
   assert.match(html, /if\(backend\.saving\)throw new Error\('這筆資料正在儲存，請勿重複點選。'\)/);
   assert.match(html, /const requestId=backendRequestId\(\);backend\.saving=true/);
   assert.match(html, /setSavingControls\(true\)/);

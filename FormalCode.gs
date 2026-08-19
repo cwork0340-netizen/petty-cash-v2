@@ -28,6 +28,7 @@ FORMAL_SHEETS = {
   changying: '長瑩交易',
   counts: '現金盤點',
   audit: '稽核紀錄',
+  handlers: '經辦人名單',
   historical: '歷史待整理'
 };
 
@@ -38,6 +39,7 @@ var FORMAL_COMPANIES = {
 var FORMAL_TX_HEADERS = ['id', 'companyId', 'transactionDate', 'transactionType', 'amount', 'purpose', 'handlerId', 'cashStatus', 'actualExpense', 'returnedCash', 'receiptStatus', 'receiptReference', 'settledAt', 'settledBy', 'requestId', 'revision', 'periodStatus', 'originalId', 'correctionReason', 'direction', 'createdAt', 'createdBy', 'updatedAt'];
 var FORMAL_COUNT_HEADERS = ['id', 'companyId', 'countedAt', 'countedBy', 'ledgerCash', 'actualCash', 'difference', 'reason', 'status', 'createdAt', 'requestId'];
 var FORMAL_AUDIT_HEADERS = ['id', 'companyId', 'entityType', 'entityId', 'action', 'before', 'after', 'reason', 'actorId', 'createdAt'];
+var FORMAL_HANDLER_HEADERS = ['name', 'status'];
 // 程式內部仍使用上方的固定欄位代號，這裡只決定 Google Sheet 顯示給同仁看的中文欄名。
 var FORMAL_TX_LABELS = ['編號', '公司代號', '交易日期', '交易類型', '金額', '用途／事由', '經手人', '現金狀態', '實際支出', '找回現金', '收據狀態', '收據編號', '結清時間', '結清人', '請求編號', '版本', '期間狀態', '原始交易編號', '更正原因', '現金方向', '建立時間', '建立人', '更新時間'];
 var FORMAL_COUNT_LABELS = ['編號', '公司代號', '盤點時間', '盤點人', '帳面現金', '實際現金', '差額', '原因／備註', '狀態', '建立時間', '請求編號'];
@@ -58,6 +60,7 @@ function dispatch_(unusedAction, payload) {
     if (action === 'getHomeData') return success_({ home: getHome_(payload) });
     if (action === 'getRecords') return success_({ records: records_(payload) });
     if (action === 'getAudit') return success_({ audit: getAudit_(payload) });
+    if (action === 'getHandlers') return success_({ handlers: handlers_() });
     if (action === 'initializeFormalDatabase') return initializeFormalDatabase_(payload);
     if (action === 'addOpening') return addOpening_(payload);
     if (action === 'closePeriod') return closePeriod_(payload);
@@ -78,6 +81,7 @@ function initializeFormalDatabase_(payload) {
   header_(sheet_(FORMAL_SHEETS.changying, FORMAL_TX_HEADERS), FORMAL_TX_LABELS);
   header_(sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS), FORMAL_COUNT_LABELS);
   header_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_LABELS);
+  header_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), ['姓名', '啟用狀態']);
   header_(sheet_(FORMAL_SHEETS.historical, ['id', 'companyId', 'originalId', 'originalDate', 'originalType', 'originalAmount', 'status', 'enteredBy', 'createdAt', 'note', 'requestId']), FORMAL_HISTORICAL_LABELS);
   return success_({ initialized: true, apiVersion: FORMAL_API_VERSION });
 }
@@ -172,6 +176,7 @@ function closePeriod_(payload) {
 function ledger_(companyId, rows) { var total = company_(companyId).openingCash; rows.forEach(function(r) { if (r.cashStatus === 'voided' || r.cashStatus === 'pending_sync') return; if (r.transactionType === 'replenishment') total += r.amount; if (r.transactionType === 'direct_expense') total -= r.amount; if (r.transactionType === 'adjustment') total += (r.direction === 'debit' ? -1 : 1) * Number(r.amount || 0); if (r.transactionType === 'advance') { total -= r.amount; if (r.cashStatus === 'settled') total += Number(r.returnedCash || 0); } }); return total; }
 function records_(payload) { return readTx_(requireCompanyId_(payload.companyId)); }
 function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
+function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return String(r.name || '').trim() && String(r.status || '').trim() !== '停用'; }).map(function(r) { return String(r.name).trim(); }); }
 function readTx_(companyId) { return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function readOpening_() { return objects_(sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']), ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']); }
 function company_(id) { return FORMAL_COMPANIES[requireCompanyId_(id)]; }

@@ -7,7 +7,7 @@
 'use strict';
 
 const API_VERSION = 'formal-v2-2026-08-12';
-const ALLOWED_ACTIONS = new Set(['initializeFormalDatabase', 'getHomeData', 'getRecords', 'getAudit', 'addOpening', 'closePeriod', 'addAdvance', 'settleAdvance', 'addDirectExpense', 'addReplenishment', 'addCount', 'confirmSync', 'createCorrection']);
+const ALLOWED_ACTIONS = new Set(['initializeFormalDatabase', 'getHomeData', 'getRecords', 'getAudit', 'getHandlers', 'addOpening', 'closePeriod', 'addAdvance', 'settleAdvance', 'addDirectExpense', 'addReplenishment', 'addCount', 'confirmSync', 'createCorrection']);
 
 module.exports = async function formalGasProxy(req, res) {
   if (process.env.V2_FORMAL_ACCESS_ENABLED !== 'true') return reply(res, 503, { error: error('formal_access_not_enabled', 'Formal access is not enabled yet') });
