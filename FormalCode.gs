@@ -70,6 +70,7 @@ function dispatch_(unusedAction, payload) {
     if (action === 'settleAdvance') return settle_(payload);
     if (action === 'confirmSync') return confirmSync_(payload);
     if (action === 'addCount') return count_(payload);
+    if (action === 'resolveCount') return resolveCount_(payload);
     if (action === 'createCorrection') return correction_(payload);
     throw coded_('invalid_action', 'Unsupported formal backend action');
   } catch (error) { return failure_(error); }
@@ -186,6 +187,16 @@ function records_(payload) {
     };
   });
   return transactions.concat(counts).sort(function(a, b) { return String(b.updatedAt || b.createdAt || b.transactionDate).localeCompare(String(a.updatedAt || a.createdAt || a.transactionDate)); });
+}
+
+function resolveCount_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var resolution = text_(payload.reason, 'reason'); var actor = text_(payload.actorId, 'actorId');
+  var sheet = sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
+  if (!count) throw coded_('not_found', 'Cash count not found');
+  if (count.status === 'resolved') return success_({ cashCount: count, idempotent: true });
+  var before = Object.assign({}, count); count.status = 'resolved'; count.reason = String(count.reason || '') + (count.reason ? '｜' : '') + '處理結論：' + resolution;
+  update_(sheet, FORMAL_COUNT_HEADERS, count); audit_(companyId, 'cash_count', count.id, 'resolve', before, count, resolution, actor);
+  return success_({ cashCount: count });
 }
 function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return String(r.name || '').trim() && String(r.status || '').trim() !== '停用'; }).map(function(r) { return String(r.name).trim(); }); }
