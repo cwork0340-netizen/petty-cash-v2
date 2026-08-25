@@ -174,10 +174,23 @@ function closePeriod_(payload) {
 }
 
 function ledger_(companyId, rows) { var total = company_(companyId).openingCash; rows.forEach(function(r) { if (r.cashStatus === 'voided' || r.cashStatus === 'pending_sync') return; if (r.transactionType === 'replenishment') total += r.amount; if (r.transactionType === 'direct_expense') total -= r.amount; if (r.transactionType === 'adjustment') total += (r.direction === 'debit' ? -1 : 1) * Number(r.amount || 0); if (r.transactionType === 'advance') { total -= r.amount; if (r.cashStatus === 'settled') total += Number(r.returnedCash || 0); } }); return total; }
-function records_(payload) { return readTx_(requireCompanyId_(payload.companyId)); }
+function records_(payload) {
+  var companyId = requireCompanyId_(payload.companyId);
+  var transactions = readTx_(companyId);
+  var counts = readCounts_(companyId).map(function(count) {
+    return {
+      id: count.id, companyId: companyId, transactionType: 'cash_count', transactionDate: count.countedAt,
+      amount: Number(count.difference || 0), purpose: count.reason || '現金盤點', handlerId: count.countedBy,
+      cashStatus: count.status === 'resolved' ? 'settled' : 'discrepancy_pending', actualCash: count.actualCash,
+      ledgerCash: count.ledgerCash, createdAt: count.createdAt, updatedAt: count.createdAt
+    };
+  });
+  return transactions.concat(counts).sort(function(a, b) { return String(b.updatedAt || b.createdAt || b.transactionDate).localeCompare(String(a.updatedAt || a.createdAt || a.transactionDate)); });
+}
 function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return String(r.name || '').trim() && String(r.status || '').trim() !== '停用'; }).map(function(r) { return String(r.name).trim(); }); }
 function readTx_(companyId) { return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
+function readCounts_(companyId) { return objects_(sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS), FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function readOpening_() { return objects_(sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']), ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']); }
 function company_(id) { return FORMAL_COMPANIES[requireCompanyId_(id)]; }
 function requireCompanyId_(id) { if (!FORMAL_COMPANIES[id]) throw coded_('invalid_company', 'Unknown company'); return id; }
