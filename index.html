@@ -35,6 +35,11 @@
   },auditsByCompany:{'全瑩':[{at:'2026/08/12 盤點',action:'開帳金額',amount:15943,detail:'8/12 實體盤點確認'}],'長瑩':[{at:'2026/08/12 盤點',action:'開帳金額',amount:2071,detail:'8/12 實體盤點確認'}]}};
   const TEST_STORAGE_KEY='pettyCashV2TestOnly';
   const formalMode=new URLSearchParams(location.search).get('mode')==='formal';
+  if(formalMode){
+    document.title='零用金 V2｜非正式版，禁止記帳';
+    document.body.innerHTML='<main style="max-width:560px;margin:12vh auto;padding:28px;font-family:-apple-system,BlinkMacSystemFont,\\\"Noto Sans TC\\\",sans-serif;background:#fff;border:2px solid #d9384c;border-radius:16px;color:#3d1118"><h1>非正式版：禁止記帳</h1><p style="line-height:1.7">此頁面尚未完成與唯一正式帳本的資料核對，所有操作已停用。</p><p><a style="color:#8f1324;font-weight:800" href="https://docs.google.com/spreadsheets/d/1b32obon2bL358QTqvW4wo6T5pReJZcMNVf2VYhD_L28/edit?gid=400292629#gid=400292629">開啟唯一正式帳本</a></p></main>';
+    return;
+  }
   const testMode=(formalMode||new URLSearchParams(location.search).get('mode')==='backend')?'backend':'local';
   const backend={status:testMode==='backend'?'loading':'not-used',error:'',recordsByCompany:{},auditsByCompany:{},ledgerByCompany:{},handlers:[],saving:false};
   const testDefaults=JSON.parse(JSON.stringify({recordsByCompany:state.recordsByCompany,auditsByCompany:state.auditsByCompany}));
