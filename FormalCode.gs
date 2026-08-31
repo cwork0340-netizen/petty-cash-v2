@@ -72,6 +72,9 @@ function dispatch_(unusedAction, payload) {
     if (action === 'addCount') return count_(payload);
     if (action === 'resolveCount') return resolveCount_(payload);
     if (action === 'createCorrection') return correction_(payload);
+    if (action === 'editTransaction') return editTransaction_(payload);
+    if (action === 'editCount') return editCount_(payload);
+    if (action === 'addAdjustment') return adjustment_(payload);
     throw coded_('invalid_action', 'Unsupported formal backend action');
   } catch (error) { return failure_(error); }
 }
@@ -84,7 +87,17 @@ function initializeFormalDatabase_(payload) {
   header_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_LABELS);
   header_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), ['姓名', '啟用狀態']);
   header_(sheet_(FORMAL_SHEETS.historical, ['id', 'companyId', 'originalId', 'originalDate', 'originalType', 'originalAmount', 'status', 'enteredBy', 'createdAt', 'note', 'requestId']), FORMAL_HISTORICAL_LABELS);
+  protectWarnOnly_(sheet_(FORMAL_SHEETS.twbio, FORMAL_TX_HEADERS));
+  protectWarnOnly_(sheet_(FORMAL_SHEETS.changying, FORMAL_TX_HEADERS));
+  protectWarnOnly_(countsSheet_());
   return success_({ initialized: true, apiVersion: FORMAL_API_VERSION });
+}
+
+function protectWarnOnly_(sheet) {
+  var existing = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
+  var protection = existing.length ? existing[0] : sheet.protect();
+  protection.setDescription('正式帳本保護：請透過 App 操作；如需手動修改請先確認再繼續');
+  protection.setWarningOnly(true);
 }
 
 function confirmSync_(payload) {
@@ -135,7 +148,37 @@ function create_(payload, type) {
   var rows = readTx_(companyId); var duplicate = rows.filter(function(r) { return r.requestId === requestId; })[0];
   if (duplicate) return success_({ transaction: duplicate, ledgerCash: ledger_(companyId, rows), idempotent: true, requestId: requestId });
   var amount = amount_(payload.amount); var pending = payload.syncStatus === 'pending_sync'; var tx = { id: 'TX-' + Utilities.getUuid(), companyId: companyId, transactionDate: payload.transactionDate || createdAt, transactionType: type, amount: amount, purpose: text_(payload.purpose, 'purpose'), handlerId: text_(payload.handlerId || actor, 'handlerId'), cashStatus: pending ? 'pending_sync' : (type === 'advance' ? 'open' : 'settled'), actualExpense: null, returnedCash: null, receiptStatus: payload.receiptStatus || (type === 'replenishment' ? 'not_required' : 'pending'), receiptReference: payload.receiptReference || null, settledAt: pending ? null : (type === 'advance' ? null : createdAt), settledBy: pending ? null : (type === 'advance' ? null : actor), requestId: requestId, revision: 1, periodStatus: 'open', originalId: payload.originalId || null, correctionReason: payload.correctionReason || null, createdAt: createdAt, createdBy: actor, updatedAt: createdAt };
-  append_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS, tx); audit_(companyId, 'transaction', tx.id, 'create', null, tx, null, actor);
+  append_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS, tx); verifyWritten_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS, tx.id); audit_(companyId, 'transaction', tx.id, 'create', null, tx, null, actor);
+  return success_({ transaction: tx, ledgerCash: ledger_(companyId, rows.concat([tx])), requestId: requestId });
+}
+
+var EDITABLE_TX_FIELDS = ['purpose', 'amount', 'handlerId', 'receiptStatus', 'receiptReference'];
+function editTransaction_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId');
+  var sheet = sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS);
+  var tx = objects_(sheet, FORMAL_TX_HEADERS).filter(function(r) { return r.id === id; })[0];
+  if (!tx) throw coded_('not_found', 'Transaction not found');
+  if (tx.periodStatus === 'closed') throw coded_('period_closed', 'Closed records are immutable; create a correction');
+  var before = Object.assign({}, tx);
+  if (payload.purpose != null) tx.purpose = text_(payload.purpose, 'purpose');
+  if (payload.amount != null) tx.amount = amount_(payload.amount);
+  if (payload.handlerId != null) tx.handlerId = text_(payload.handlerId, 'handlerId');
+  if (payload.receiptStatus != null) tx.receiptStatus = String(payload.receiptStatus);
+  if (payload.receiptReference != null) tx.receiptReference = String(payload.receiptReference);
+  tx.revision = Number(tx.revision || 1) + 1; tx.updatedAt = now_();
+  update_(sheet, FORMAL_TX_HEADERS, tx);
+  audit_(companyId, 'transaction', tx.id, 'edit', before, tx, String(payload.reason || '手動編輯'), actor);
+  return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)) });
+}
+
+function adjustment_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var actor = text_(payload.actorId, 'actorId'); var requestId = text_(payload.requestId, 'requestId');
+  var reason = text_(payload.reason, 'reason'); var direction = payload.direction === 'debit' ? 'debit' : 'credit';
+  var rows = readTx_(companyId); var duplicate = rows.filter(function(r) { return r.requestId === requestId; })[0];
+  if (duplicate) return success_({ transaction: duplicate, ledgerCash: ledger_(companyId, rows), idempotent: true, requestId: requestId });
+  var amount = amount_(payload.amount); var createdAt = now_();
+  var tx = { id: 'TX-' + Utilities.getUuid(), companyId: companyId, transactionDate: createdAt, transactionType: 'adjustment', amount: amount, purpose: '調整：' + reason, handlerId: text_(payload.handlerId || actor, 'handlerId'), cashStatus: 'settled', actualExpense: null, returnedCash: null, receiptStatus: 'not_required', receiptReference: null, settledAt: createdAt, settledBy: actor, requestId: requestId, revision: 1, periodStatus: 'open', originalId: null, correctionReason: reason, direction: direction, createdAt: createdAt, createdBy: actor, updatedAt: createdAt };
+  append_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS, tx); verifyWritten_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS, tx.id); audit_(companyId, 'transaction', tx.id, 'create', null, tx, reason, actor);
   return success_({ transaction: tx, ledgerCash: ledger_(companyId, rows.concat([tx])), requestId: requestId });
 }
 
@@ -153,11 +196,23 @@ function settle_(payload) {
 }
 
 function count_(payload) {
-  var companyId = requireCompanyId_(payload.companyId); var requestId = text_(payload.requestId, 'requestId'); var existing = objects_(sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS), FORMAL_COUNT_HEADERS).filter(function(r) { return r.requestId === requestId; })[0]; if (existing) return success_({ cashCount: existing, ledgerCash: existing.ledgerCash, idempotent: true }); var actual = amount_(payload.actualCash); var rows = readTx_(companyId); var ledger = ledger_(companyId, rows); var difference = actual - ledger;
+  var companyId = requireCompanyId_(payload.companyId); var requestId = text_(payload.requestId, 'requestId'); var existing = objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.requestId === requestId; })[0]; if (existing) return success_({ cashCount: existing, ledgerCash: existing.ledgerCash, idempotent: true }); var actual = amount_(payload.actualCash); var rows = readTx_(companyId); var ledger = ledger_(companyId, rows); var difference = actual - ledger;
   if (difference !== 0 && !String(payload.reason || '').trim()) throw coded_('reason_required', 'Count difference requires a reason');
   var count = { id: 'COUNT-' + Utilities.getUuid(), companyId: companyId, countedAt: now_(), countedBy: text_(payload.actorId, 'actorId'), ledgerCash: ledger, actualCash: actual, difference: difference, reason: payload.reason || null, status: difference === 0 ? 'resolved' : 'open', createdAt: now_(), requestId: requestId };
-  append_(sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS), FORMAL_COUNT_HEADERS, count); audit_(companyId, 'cash_count', count.id, 'create', null, count, count.reason, count.countedBy);
+  append_(countsSheet_(), FORMAL_COUNT_HEADERS, count); verifyWritten_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS, count.id); audit_(companyId, 'cash_count', count.id, 'create', null, count, count.reason, count.countedBy);
   return success_({ cashCount: count, ledgerCash: ledger });
+}
+
+function editCount_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId');
+  var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
+  if (!count) throw coded_('not_found', 'Cash count not found');
+  var before = Object.assign({}, count);
+  if (payload.actualCash != null) { count.actualCash = amount_(payload.actualCash); count.difference = count.actualCash - Number(count.ledgerCash || 0); count.status = count.difference === 0 ? 'resolved' : count.status; }
+  if (payload.reason != null) count.reason = String(payload.reason);
+  update_(sheet, FORMAL_COUNT_HEADERS, count);
+  audit_(companyId, 'cash_count', count.id, 'edit', before, count, String(payload.editReason || '手動編輯'), actor);
+  return success_({ cashCount: count });
 }
 
 function correction_(payload) {
@@ -191,7 +246,7 @@ function records_(payload) {
 
 function resolveCount_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var resolution = text_(payload.reason, 'reason'); var actor = text_(payload.actorId, 'actorId');
-  var sheet = sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
+  var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
   if (!count) throw coded_('not_found', 'Cash count not found');
   if (count.status === 'resolved') return success_({ cashCount: count, idempotent: true });
   var before = Object.assign({}, count); count.status = 'resolved'; count.reason = String(count.reason || '') + (count.reason ? '｜' : '') + '處理結論：' + resolution;
@@ -201,7 +256,9 @@ function resolveCount_(payload) {
 function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
 function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return String(r.name || '').trim() && String(r.status || '').trim() !== '停用'; }).map(function(r) { return String(r.name).trim(); }); }
 function readTx_(companyId) { return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
-function readCounts_(companyId) { return objects_(sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS), FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
+function readCounts_(companyId) { return objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId; }).map(function(r) { if (r.reason instanceof Date) r.reason = Utilities.formatDate(r.reason, 'Asia/Taipei', 'yyyy/MM/dd'); return r; }); }
+function countsSheet_() { var sheet = sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS); var reasonCol = FORMAL_COUNT_HEADERS.indexOf('reason') + 1; sheet.getRange(1, reasonCol, Math.max(sheet.getMaxRows(), 2), 1).setNumberFormat('@'); return sheet; }
+function verifyWritten_(sheetName, headers, id) { var sheet = sheet_(sheetName, headers); var found = objects_(sheet, headers).some(function(r) { return String(r.id) === String(id); }); if (!found) throw coded_('write_verification_failed', '寫入後找不到這筆紀錄，請重新操作或聯絡管理者'); }
 function readOpening_() { return objects_(sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']), ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']); }
 function company_(id) { return FORMAL_COMPANIES[requireCompanyId_(id)]; }
 function requireCompanyId_(id) { if (!FORMAL_COMPANIES[id]) throw coded_('invalid_company', 'Unknown company'); return id; }
