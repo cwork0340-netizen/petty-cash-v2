@@ -55,14 +55,17 @@ function doPost(e) {
 
 // 會寫入 Sheet 的動作：同一時間只能有一個人在執行，避免兩個請求同時 append 同一張表，
 // 造成其中一筆資料被另一筆蓋掉（稽核軌跡有記錄、但交易明細分頁卻少一列）。
-var FORMAL_WRITE_ACTIONS = ['initializeFormalDatabase', 'addOpening', 'closePeriod', 'addAdvance', 'addDirectExpense', 'addReplenishment', 'settleAdvance', 'confirmSync', 'addCount', 'resolveCount', 'createCorrection', 'editTransaction', 'editCount', 'addAdjustment'];
+var FORMAL_WRITE_ACTIONS = ['initializeFormalDatabase', 'addOpening', 'closePeriod', 'addAdvance', 'addDirectExpense', 'addReplenishment', 'settleAdvance', 'confirmSync', 'addCount', 'resolveCount', 'createCorrection', 'editTransaction', 'editCount', 'addAdjustment', 'voidTransaction', 'voidCount'];
 
 function dispatch_(unusedAction, payload) {
   try {
     requireFormalApiKey_(payload);
     var action = String(payload.action || '');
     var lock = null;
-    if (FORMAL_WRITE_ACTIONS.indexOf(action) !== -1) { lock = LockService.getScriptLock(); lock.waitLock(20000); }
+    if (FORMAL_WRITE_ACTIONS.indexOf(action) !== -1) {
+      lock = LockService.getScriptLock();
+      try { lock.waitLock(20000); } catch (lockError) { throw coded_('lock_timeout', '系統忙碌中，請稍後再試'); }
+    }
     try {
       if (action === 'getHomeData') return success_({ home: getHome_(payload) });
       if (action === 'getRecords') return success_({ records: records_(payload) });
@@ -82,6 +85,8 @@ function dispatch_(unusedAction, payload) {
       if (action === 'editTransaction') return editTransaction_(payload);
       if (action === 'editCount') return editCount_(payload);
       if (action === 'addAdjustment') return adjustment_(payload);
+      if (action === 'voidTransaction') return voidTransaction_(payload);
+      if (action === 'voidCount') return voidCount_(payload);
       throw coded_('invalid_action', 'Unsupported formal backend action');
     } finally {
       if (lock) lock.releaseLock();
@@ -162,7 +167,7 @@ function create_(payload, type) {
   return success_({ transaction: tx, ledgerCash: ledger_(companyId, rows.concat([tx])), requestId: requestId });
 }
 
-var EDITABLE_TX_FIELDS = ['purpose', 'amount', 'handlerId', 'receiptStatus', 'receiptReference'];
+var EDITABLE_TX_FIELDS = ['purpose', 'amount', 'handlerId', 'receiptStatus', 'receiptReference', 'transactionDate'];
 function editTransaction_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId');
   var sheet = sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS);
@@ -175,9 +180,24 @@ function editTransaction_(payload) {
   if (payload.handlerId != null) tx.handlerId = text_(payload.handlerId, 'handlerId');
   if (payload.receiptStatus != null) tx.receiptStatus = String(payload.receiptStatus);
   if (payload.receiptReference != null) tx.receiptReference = String(payload.receiptReference);
+  if (payload.transactionDate != null) tx.transactionDate = text_(payload.transactionDate, 'transactionDate');
   tx.revision = Number(tx.revision || 1) + 1; tx.updatedAt = now_();
   update_(sheet, FORMAL_TX_HEADERS, tx);
   audit_(companyId, 'transaction', tx.id, 'edit', before, tx, String(payload.reason || '手動編輯'), actor);
+  return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)) });
+}
+
+function voidTransaction_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId'); var reason = text_(payload.reason, 'reason');
+  var sheet = sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS);
+  var tx = objects_(sheet, FORMAL_TX_HEADERS).filter(function(r) { return r.id === id; })[0];
+  if (!tx) throw coded_('not_found', 'Transaction not found');
+  if (tx.periodStatus === 'closed') throw coded_('period_closed', 'Closed records are immutable; create a correction');
+  if (tx.cashStatus === 'voided') return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)), idempotent: true });
+  var before = Object.assign({}, tx);
+  tx.cashStatus = 'voided'; tx.correctionReason = reason; tx.revision = Number(tx.revision || 1) + 1; tx.updatedAt = now_();
+  update_(sheet, FORMAL_TX_HEADERS, tx);
+  audit_(companyId, 'transaction', tx.id, 'void', before, tx, reason, actor);
   return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)) });
 }
 
@@ -225,6 +245,18 @@ function editCount_(payload) {
   return success_({ cashCount: count });
 }
 
+function voidCount_(payload) {
+  var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId'); var reason = text_(payload.reason, 'reason');
+  var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
+  if (!count) throw coded_('not_found', 'Cash count not found');
+  if (count.status === 'voided') return success_({ cashCount: count, idempotent: true });
+  var before = Object.assign({}, count);
+  count.status = 'voided'; count.reason = String(count.reason || '') + (count.reason ? '｜' : '') + '刪除原因：' + reason;
+  update_(sheet, FORMAL_COUNT_HEADERS, count);
+  audit_(companyId, 'cash_count', count.id, 'void', before, count, reason, actor);
+  return success_({ cashCount: count });
+}
+
 function correction_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var originalId = text_(payload.originalId, 'originalId'); var reason = text_(payload.reason, 'reason');
   var original = readTx_(companyId).filter(function(r) { return r.id === originalId; })[0]; if (!original) throw coded_('not_found', 'Original record not found');
@@ -247,7 +279,7 @@ function records_(payload) {
     return {
       id: count.id, companyId: companyId, transactionType: 'cash_count', transactionDate: count.countedAt,
       amount: Number(count.difference || 0), purpose: count.reason || '現金盤點', handlerId: count.countedBy,
-      cashStatus: count.status === 'resolved' ? 'settled' : 'discrepancy_pending', actualCash: count.actualCash,
+      cashStatus: count.status === 'resolved' ? 'settled' : count.status === 'voided' ? 'voided' : 'discrepancy_pending', actualCash: count.actualCash,
       ledgerCash: count.ledgerCash, createdAt: count.createdAt, updatedAt: count.createdAt
     };
   });
