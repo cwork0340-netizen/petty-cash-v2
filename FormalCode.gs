@@ -62,7 +62,10 @@ function dispatch_(unusedAction, payload) {
     requireFormalApiKey_(payload);
     var action = String(payload.action || '');
     var lock = null;
-    if (FORMAL_WRITE_ACTIONS.indexOf(action) !== -1) { lock = LockService.getScriptLock(); lock.waitLock(20000); }
+    if (FORMAL_WRITE_ACTIONS.indexOf(action) !== -1) {
+      lock = LockService.getScriptLock();
+      try { lock.waitLock(20000); } catch (lockError) { throw coded_('lock_timeout', '系統忙碌中，請稍後再試'); }
+    }
     try {
       if (action === 'getHomeData') return success_({ home: getHome_(payload) });
       if (action === 'getRecords') return success_({ records: records_(payload) });
