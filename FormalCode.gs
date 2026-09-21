@@ -251,7 +251,8 @@ function voidCount_(payload) {
   if (!count) throw coded_('not_found', 'Cash count not found');
   if (count.status === 'voided') return success_({ cashCount: count, idempotent: true });
   var before = Object.assign({}, count);
-  count.status = 'voided'; count.reason = String(count.reason || '') + (count.reason ? '｜' : '') + '刪除原因：' + reason;
+  var priorReason = safeReasonText_(count.reason);
+  count.status = 'voided'; count.reason = priorReason + (priorReason ? '｜' : '') + '刪除原因：' + reason;
   update_(sheet, FORMAL_COUNT_HEADERS, count);
   audit_(companyId, 'cash_count', count.id, 'void', before, count, reason, actor);
   return success_({ cashCount: count });
@@ -278,7 +279,7 @@ function records_(payload) {
   var counts = readCounts_(companyId).map(function(count) {
     return {
       id: count.id, companyId: companyId, transactionType: 'cash_count', transactionDate: count.countedAt,
-      amount: Number(count.difference || 0), purpose: count.reason || '現金盤點', handlerId: count.countedBy,
+      amount: Number(count.difference || 0), purpose: safeReasonText_(count.reason) || '現金盤點', handlerId: count.countedBy,
       cashStatus: count.status === 'resolved' ? 'settled' : count.status === 'voided' ? 'voided' : 'discrepancy_pending', actualCash: count.actualCash,
       ledgerCash: count.ledgerCash, createdAt: count.createdAt, updatedAt: count.createdAt
     };
@@ -291,7 +292,7 @@ function resolveCount_(payload) {
   var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
   if (!count) throw coded_('not_found', 'Cash count not found');
   if (count.status === 'resolved') return success_({ cashCount: count, idempotent: true });
-  var before = Object.assign({}, count); count.status = 'resolved'; count.reason = String(count.reason || '') + (count.reason ? '｜' : '') + '處理結論：' + resolution;
+  var before = Object.assign({}, count); count.status = 'resolved'; var priorReason = safeReasonText_(count.reason); count.reason = priorReason + (priorReason ? '｜' : '') + '處理結論：' + resolution;
   update_(sheet, FORMAL_COUNT_HEADERS, count); audit_(companyId, 'cash_count', count.id, 'resolve', before, count, resolution, actor);
   return success_({ cashCount: count });
 }
@@ -313,6 +314,10 @@ function update_(sheet, headers, obj) { var rows = sheet.getDataRange().getValue
 function objects_(sheet, headers) { if (sheet.getLastRow() < 2) return []; return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().map(function(row) { var o = {}; headers.forEach(function(h, i) { o[h] = row[i]; }); return o; }); }
 function audit_(companyId, type, entityId, action, before, after, reason, actor) { append_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS, { id: 'AUD-' + Utilities.getUuid(), companyId: companyId, entityType: type, entityId: entityId, action: action, before: before, after: after, reason: reason, actorId: actor, createdAt: now_() }); }
 function amount_(v) { var n = Number(v); if (!Number.isInteger(n) || n < 0) throw coded_('validation_error', 'Amount must be a non-negative integer'); return n; }
+// Sheets silently reinterprets a text cell as a date if it ever looked date-like, so
+// getValues() can hand back a Date object where a plain reason string was written.
+// Treat that as "no reason on file" instead of leaking Date#toString() into the UI.
+function safeReasonText_(v) { return v instanceof Date ? '' : String(v || '').trim(); }
 function text_(v, name) { if (!String(v || '').trim()) throw coded_('validation_error', name + ' is required'); return String(v).trim(); }
 function now_() { return new Date().toISOString(); }
 function coded_(code, message) { var e = new Error(message); e.code = code; return e; }
