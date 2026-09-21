@@ -53,29 +53,39 @@ function doPost(e) {
   catch (error) { return json_(failure_(error)); }
 }
 
+// 會寫入 Sheet 的動作：同一時間只能有一個人在執行，避免兩個請求同時 append 同一張表，
+// 造成其中一筆資料被另一筆蓋掉（稽核軌跡有記錄、但交易明細分頁卻少一列）。
+var FORMAL_WRITE_ACTIONS = ['initializeFormalDatabase', 'addOpening', 'closePeriod', 'addAdvance', 'addDirectExpense', 'addReplenishment', 'settleAdvance', 'confirmSync', 'addCount', 'resolveCount', 'createCorrection', 'editTransaction', 'editCount', 'addAdjustment'];
+
 function dispatch_(unusedAction, payload) {
   try {
     requireFormalApiKey_(payload);
     var action = String(payload.action || '');
-    if (action === 'getHomeData') return success_({ home: getHome_(payload) });
-    if (action === 'getRecords') return success_({ records: records_(payload) });
-    if (action === 'getAudit') return success_({ audit: getAudit_(payload) });
-    if (action === 'getHandlers') return success_({ handlers: handlers_() });
-    if (action === 'initializeFormalDatabase') return initializeFormalDatabase_(payload);
-    if (action === 'addOpening') return addOpening_(payload);
-    if (action === 'closePeriod') return closePeriod_(payload);
-    if (action === 'addAdvance') return create_(payload, 'advance');
-    if (action === 'addDirectExpense') return create_(payload, 'direct_expense');
-    if (action === 'addReplenishment') return create_(payload, 'replenishment');
-    if (action === 'settleAdvance') return settle_(payload);
-    if (action === 'confirmSync') return confirmSync_(payload);
-    if (action === 'addCount') return count_(payload);
-    if (action === 'resolveCount') return resolveCount_(payload);
-    if (action === 'createCorrection') return correction_(payload);
-    if (action === 'editTransaction') return editTransaction_(payload);
-    if (action === 'editCount') return editCount_(payload);
-    if (action === 'addAdjustment') return adjustment_(payload);
-    throw coded_('invalid_action', 'Unsupported formal backend action');
+    var lock = null;
+    if (FORMAL_WRITE_ACTIONS.indexOf(action) !== -1) { lock = LockService.getScriptLock(); lock.waitLock(20000); }
+    try {
+      if (action === 'getHomeData') return success_({ home: getHome_(payload) });
+      if (action === 'getRecords') return success_({ records: records_(payload) });
+      if (action === 'getAudit') return success_({ audit: getAudit_(payload) });
+      if (action === 'getHandlers') return success_({ handlers: handlers_() });
+      if (action === 'initializeFormalDatabase') return initializeFormalDatabase_(payload);
+      if (action === 'addOpening') return addOpening_(payload);
+      if (action === 'closePeriod') return closePeriod_(payload);
+      if (action === 'addAdvance') return create_(payload, 'advance');
+      if (action === 'addDirectExpense') return create_(payload, 'direct_expense');
+      if (action === 'addReplenishment') return create_(payload, 'replenishment');
+      if (action === 'settleAdvance') return settle_(payload);
+      if (action === 'confirmSync') return confirmSync_(payload);
+      if (action === 'addCount') return count_(payload);
+      if (action === 'resolveCount') return resolveCount_(payload);
+      if (action === 'createCorrection') return correction_(payload);
+      if (action === 'editTransaction') return editTransaction_(payload);
+      if (action === 'editCount') return editCount_(payload);
+      if (action === 'addAdjustment') return adjustment_(payload);
+      throw coded_('invalid_action', 'Unsupported formal backend action');
+    } finally {
+      if (lock) lock.releaseLock();
+    }
   } catch (error) { return failure_(error); }
 }
 
