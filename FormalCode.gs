@@ -297,8 +297,14 @@ function resolveCount_(payload) {
   return success_({ cashCount: count });
 }
 function getAudit_(payload) { var companyId = requireCompanyId_(payload.companyId); return objects_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
-function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return String(r.name || '').trim() && String(r.status || '').trim() !== '停用'; }).map(function(r) { return String(r.name).trim(); }); }
-function readTx_(companyId) { return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }); }
+function handlers_() { return objects_(sheet_(FORMAL_SHEETS.handlers, FORMAL_HANDLER_HEADERS), FORMAL_HANDLER_HEADERS).filter(function(r) { return safeReasonText_(r.name) && String(r.status || '').trim() !== '停用'; }).map(function(r) { return safeReasonText_(r.name); }); }
+var FORMAL_TX_TEXT_FIELDS = ['purpose', 'handlerId', 'receiptReference', 'correctionReason', 'settledBy', 'createdBy'];
+function readTx_(companyId) {
+  return objects_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS).filter(function(r) { return r.companyId === companyId; }).map(function(r) {
+    FORMAL_TX_TEXT_FIELDS.forEach(function(field) { if (r[field] instanceof Date) r[field] = Utilities.formatDate(r[field], 'Asia/Taipei', 'yyyy/MM/dd'); });
+    return r;
+  });
+}
 function readCounts_(companyId) { return objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId; }).map(function(r) { if (r.reason instanceof Date) r.reason = Utilities.formatDate(r.reason, 'Asia/Taipei', 'yyyy/MM/dd'); return r; }); }
 function countsSheet_() { var sheet = sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS); var reasonCol = FORMAL_COUNT_HEADERS.indexOf('reason') + 1; sheet.getRange(1, reasonCol, Math.max(sheet.getMaxRows(), 2), 1).setNumberFormat('@'); return sheet; }
 function verifyWritten_(sheetName, headers, id) { var sheet = sheet_(sheetName, headers); var found = objects_(sheet, headers).some(function(r) { return String(r.id) === String(id); }); if (!found) throw coded_('write_verification_failed', '寫入後找不到這筆紀錄，請重新操作或聯絡管理者'); }
