@@ -37,12 +37,12 @@ var FORMAL_COMPANIES = {
   changying: { name: '長瑩', openingCash: 2071 }
 };
 var FORMAL_TX_HEADERS = ['id', 'companyId', 'transactionDate', 'transactionType', 'amount', 'purpose', 'handlerId', 'cashStatus', 'actualExpense', 'returnedCash', 'receiptStatus', 'receiptReference', 'settledAt', 'settledBy', 'requestId', 'revision', 'periodStatus', 'originalId', 'correctionReason', 'direction', 'createdAt', 'createdBy', 'updatedAt'];
-var FORMAL_COUNT_HEADERS = ['id', 'companyId', 'countedAt', 'countedBy', 'ledgerCash', 'actualCash', 'difference', 'reason', 'status', 'createdAt', 'requestId'];
+var FORMAL_COUNT_HEADERS = ['id', 'companyId', 'countedAt', 'countedBy', 'ledgerCash', 'actualCash', 'difference', 'reason', 'status', 'createdAt', 'requestId', 'denominations'];
 var FORMAL_AUDIT_HEADERS = ['id', 'companyId', 'entityType', 'entityId', 'action', 'before', 'after', 'reason', 'actorId', 'createdAt'];
 var FORMAL_HANDLER_HEADERS = ['name', 'status'];
 // 程式內部仍使用上方的固定欄位代號，這裡只決定 Google Sheet 顯示給同仁看的中文欄名。
 var FORMAL_TX_LABELS = ['編號', '公司代號', '交易日期', '交易類型', '金額', '用途／事由', '經手人', '現金狀態', '實際支出', '找回現金', '收據狀態', '收據編號', '結清時間', '結清人', '請求編號', '版本', '期間狀態', '原始交易編號', '更正原因', '現金方向', '建立時間', '建立人', '更新時間'];
-var FORMAL_COUNT_LABELS = ['編號', '公司代號', '盤點時間', '盤點人', '帳面現金', '實際現金', '差額', '原因／備註', '狀態', '建立時間', '請求編號'];
+var FORMAL_COUNT_LABELS = ['編號', '公司代號', '盤點時間', '盤點人', '帳面現金', '實際現金', '差額', '原因／備註', '狀態', '建立時間', '請求編號', '面額明細'];
 var FORMAL_AUDIT_LABELS = ['編號', '公司代號', '資料類型', '資料編號', '操作', '異動前', '異動後', '原因', '操作人', '建立時間'];
 var FORMAL_OPENING_LABELS = ['開帳時間', '公司代號', '公司名稱', '開帳現金', '資料來源', '列入收入', '列入支出', '建立時間'];
 var FORMAL_HISTORICAL_LABELS = ['編號', '公司代號', '原始交易編號', '原始日期', '原始類型', '原始金額', '狀態', '登錄人', '建立時間', '備註', '請求編號'];
@@ -226,9 +226,9 @@ function settle_(payload) {
 }
 
 function count_(payload) {
-  var companyId = requireCompanyId_(payload.companyId); var requestId = text_(payload.requestId, 'requestId'); var existing = objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.requestId === requestId; })[0]; if (existing) return success_({ cashCount: existing, ledgerCash: existing.ledgerCash, idempotent: true }); var actual = amount_(payload.actualCash); var rows = readTx_(companyId); var ledger = ledger_(companyId, rows); var difference = actual - ledger;
+  var companyId = requireCompanyId_(payload.companyId); var actor = text_(payload.actorId, 'actorId'); var requestId = text_(payload.requestId, 'requestId'); var existing = objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.requestId === requestId; })[0]; if (existing) return success_({ cashCount: existing, ledgerCash: existing.ledgerCash, idempotent: true }); var actual = amount_(payload.actualCash); var rows = readTx_(companyId); var ledger = ledger_(companyId, rows); var difference = actual - ledger;
   if (difference !== 0 && !String(payload.reason || '').trim()) throw coded_('reason_required', 'Count difference requires a reason');
-  var count = { id: 'COUNT-' + Utilities.getUuid(), companyId: companyId, countedAt: now_(), countedBy: text_(payload.actorId, 'actorId'), ledgerCash: ledger, actualCash: actual, difference: difference, reason: payload.reason || null, status: difference === 0 ? 'resolved' : 'open', createdAt: now_(), requestId: requestId };
+  var count = { id: 'COUNT-' + Utilities.getUuid(), companyId: companyId, countedAt: now_(), countedBy: text_(payload.handlerId || actor, 'handlerId'), ledgerCash: ledger, actualCash: actual, difference: difference, reason: payload.reason || null, status: difference === 0 ? 'resolved' : 'open', createdAt: now_(), requestId: requestId, denominations: payload.denominations || {} };
   append_(countsSheet_(), FORMAL_COUNT_HEADERS, count); verifyWritten_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS, count.id); audit_(companyId, 'cash_count', count.id, 'create', null, count, count.reason, count.countedBy);
   return success_({ cashCount: count, ledgerCash: ledger });
 }
