@@ -117,7 +117,7 @@ function protectWarnOnly_(sheet) {
 
 function confirmSync_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var actor = text_(payload.actorId, 'actorId'); var rows = readTx_(companyId); var tx = rows.filter(function(r) { return r.requestId === payload.requestId; })[0];
-  if (!tx) throw coded_('not_found', 'Pending transaction not found');
+  if (!tx) throw coded_('not_found', '找不到待確認同步的交易');
   if (tx.cashStatus !== 'pending_sync') return success_({ transaction: tx, idempotent: true, ledgerCash: ledger_(companyId, rows) });
   tx.cashStatus = tx.transactionType === 'advance' ? 'open' : 'settled'; tx.settledAt = tx.transactionType === 'advance' ? null : now_(); tx.settledBy = tx.transactionType === 'advance' ? null : actor; tx.updatedAt = now_(); tx.revision = Number(tx.revision || 1) + 1;
   update_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS, tx); audit_(companyId, 'transaction', tx.id, 'confirm_sync', { cashStatus: 'pending_sync' }, tx, null, actor); return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)) });
@@ -172,8 +172,8 @@ function editTransaction_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId');
   var sheet = sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS);
   var tx = objects_(sheet, FORMAL_TX_HEADERS).filter(function(r) { return r.id === id; })[0];
-  if (!tx) throw coded_('not_found', 'Transaction not found');
-  if (tx.periodStatus === 'closed') throw coded_('period_closed', 'Closed records are immutable; create a correction');
+  if (!tx) throw coded_('not_found', '找不到這筆交易紀錄');
+  if (tx.periodStatus === 'closed') throw coded_('period_closed', '已關帳的紀錄無法修改，請改用更正紀錄處理');
   var before = Object.assign({}, tx);
   if (payload.purpose != null) tx.purpose = text_(payload.purpose, 'purpose');
   if (payload.amount != null) tx.amount = amount_(payload.amount);
@@ -191,8 +191,8 @@ function voidTransaction_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId'); var reason = text_(payload.reason, 'reason');
   var sheet = sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS);
   var tx = objects_(sheet, FORMAL_TX_HEADERS).filter(function(r) { return r.id === id; })[0];
-  if (!tx) throw coded_('not_found', 'Transaction not found');
-  if (tx.periodStatus === 'closed') throw coded_('period_closed', 'Closed records are immutable; create a correction');
+  if (!tx) throw coded_('not_found', '找不到這筆交易紀錄');
+  if (tx.periodStatus === 'closed') throw coded_('period_closed', '已關帳的紀錄無法修改，請改用更正紀錄處理');
   if (tx.cashStatus === 'voided') return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)), idempotent: true });
   var before = Object.assign({}, tx);
   tx.cashStatus = 'voided'; tx.correctionReason = reason; tx.revision = Number(tx.revision || 1) + 1; tx.updatedAt = now_();
@@ -214,12 +214,12 @@ function adjustment_(payload) {
 
 function settle_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var rows = readTx_(companyId); var tx = rows.filter(function(r) { return r.id === payload.id; })[0];
-  if (!tx || tx.transactionType !== 'advance') throw coded_('not_found', 'Advance not found');
-  if (tx.periodStatus === 'closed') throw coded_('period_closed', 'Closed records are immutable; create a correction');
-  if (tx.cashStatus === 'settled') throw coded_('already_settled', 'Advance already settled');
-  if (payload.revision != null && Number(payload.revision) !== Number(tx.revision)) throw coded_('revision_conflict', 'Record changed; refresh before settling');
+  if (!tx || tx.transactionType !== 'advance') throw coded_('not_found', '找不到這筆預支紀錄');
+  if (tx.periodStatus === 'closed') throw coded_('period_closed', '已關帳的紀錄無法修改，請改用更正紀錄處理');
+  if (tx.cashStatus === 'settled') throw coded_('already_settled', '這筆已經結清過了，請重新整理頁面後再確認');
+  if (payload.revision != null && Number(payload.revision) !== Number(tx.revision)) throw coded_('revision_conflict', '這筆資料已被更新，請重新整理頁面後再結清');
   var actual = amount_(payload.actualExpense), returned = amount_(payload.returnedCash); var difference = tx.amount - actual - returned;
-  if (difference !== 0) throw coded_('settlement_difference', 'Settlement must equal advance = expense + returned cash');
+  if (difference !== 0) throw coded_('settlement_difference', '結清金額須平衡：預支金額 = 實際支出 + 找零帶回');
   tx.actualExpense = actual; tx.returnedCash = returned; tx.cashStatus = 'settled'; tx.receiptStatus = payload.receiptStatus || 'pending'; tx.settledAt = now_(); tx.settledBy = text_(payload.actorId, 'actorId'); tx.revision = Number(tx.revision || 1) + 1; tx.updatedAt = now_();
   update_(sheet_(FORMAL_SHEETS[companyId], FORMAL_TX_HEADERS), FORMAL_TX_HEADERS, tx); audit_(companyId, 'transaction', tx.id, 'settle', null, tx, null, tx.settledBy);
   return success_({ transaction: tx, ledgerCash: ledger_(companyId, readTx_(companyId)) });
@@ -227,7 +227,7 @@ function settle_(payload) {
 
 function count_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var actor = text_(payload.actorId, 'actorId'); var requestId = text_(payload.requestId, 'requestId'); var existing = objects_(countsSheet_(), FORMAL_COUNT_HEADERS).filter(function(r) { return r.requestId === requestId; })[0]; if (existing) return success_({ cashCount: existing, ledgerCash: existing.ledgerCash, idempotent: true }); var actual = amount_(payload.actualCash); var rows = readTx_(companyId); var ledger = ledger_(companyId, rows); var difference = actual - ledger;
-  if (difference !== 0 && !String(payload.reason || '').trim()) throw coded_('reason_required', 'Count difference requires a reason');
+  if (difference !== 0 && !String(payload.reason || '').trim()) throw coded_('reason_required', '盤點有差額時必須填寫原因');
   var count = { id: 'COUNT-' + Utilities.getUuid(), companyId: companyId, countedAt: now_(), countedBy: text_(payload.handlerId || actor, 'handlerId'), ledgerCash: ledger, actualCash: actual, difference: difference, reason: payload.reason || null, status: difference === 0 ? 'resolved' : 'open', createdAt: now_(), requestId: requestId, denominations: payload.denominations || {} };
   append_(countsSheet_(), FORMAL_COUNT_HEADERS, count); verifyWritten_(FORMAL_SHEETS.counts, FORMAL_COUNT_HEADERS, count.id); audit_(companyId, 'cash_count', count.id, 'create', null, count, count.reason, count.countedBy);
   return success_({ cashCount: count, ledgerCash: ledger });
@@ -236,7 +236,7 @@ function count_(payload) {
 function editCount_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId');
   var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
-  if (!count) throw coded_('not_found', 'Cash count not found');
+  if (!count) throw coded_('not_found', '找不到這筆盤點紀錄');
   var before = Object.assign({}, count);
   if (payload.actualCash != null) { count.actualCash = amount_(payload.actualCash); count.difference = count.actualCash - Number(count.ledgerCash || 0); count.status = count.difference === 0 ? 'resolved' : count.status; }
   if (payload.reason != null) count.reason = String(payload.reason);
@@ -248,7 +248,7 @@ function editCount_(payload) {
 function voidCount_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var actor = text_(payload.actorId, 'actorId'); var reason = text_(payload.reason, 'reason');
   var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
-  if (!count) throw coded_('not_found', 'Cash count not found');
+  if (!count) throw coded_('not_found', '找不到這筆盤點紀錄');
   if (count.status === 'voided') return success_({ cashCount: count, idempotent: true });
   var before = Object.assign({}, count);
   var priorReason = safeReasonText_(count.reason);
@@ -260,8 +260,8 @@ function voidCount_(payload) {
 
 function correction_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var originalId = text_(payload.originalId, 'originalId'); var reason = text_(payload.reason, 'reason');
-  var original = readTx_(companyId).filter(function(r) { return r.id === originalId; })[0]; if (!original) throw coded_('not_found', 'Original record not found');
-  if (original.periodStatus !== 'closed') throw coded_('period_not_closed', 'Corrections are required only after month close');
+  var original = readTx_(companyId).filter(function(r) { return r.id === originalId; })[0]; if (!original) throw coded_('not_found', '找不到原始紀錄');
+  if (original.periodStatus !== 'closed') throw coded_('period_not_closed', '只有月結後才能建立更正紀錄');
   var corrected = create_(Object.assign({}, payload, { purpose: '更正：' + original.purpose, amount: payload.amount, originalId: originalId, correctionReason: reason, transactionDate: now_(), direction: payload.direction || 'credit' }), 'adjustment');
   return corrected;
 }
@@ -290,7 +290,7 @@ function records_(payload) {
 function resolveCount_(payload) {
   var companyId = requireCompanyId_(payload.companyId); var id = text_(payload.id, 'id'); var resolution = text_(payload.reason, 'reason'); var actor = text_(payload.actorId, 'actorId');
   var sheet = countsSheet_(); var count = objects_(sheet, FORMAL_COUNT_HEADERS).filter(function(r) { return r.companyId === companyId && r.id === id; })[0];
-  if (!count) throw coded_('not_found', 'Cash count not found');
+  if (!count) throw coded_('not_found', '找不到這筆盤點紀錄');
   if (count.status === 'resolved') return success_({ cashCount: count, idempotent: true });
   var before = Object.assign({}, count); count.status = 'resolved'; var priorReason = safeReasonText_(count.reason); count.reason = priorReason + (priorReason ? '｜' : '') + '處理結論：' + resolution;
   update_(sheet, FORMAL_COUNT_HEADERS, count); audit_(companyId, 'cash_count', count.id, 'resolve', before, count, resolution, actor);
@@ -310,7 +310,7 @@ function countsSheet_() { var sheet = sheet_(FORMAL_SHEETS.counts, FORMAL_COUNT_
 function verifyWritten_(sheetName, headers, id) { var sheet = sheet_(sheetName, headers); var found = objects_(sheet, headers).some(function(r) { return String(r.id) === String(id); }); if (!found) throw coded_('write_verification_failed', '寫入後找不到這筆紀錄，請重新操作或聯絡管理者'); }
 function readOpening_() { return objects_(sheet_(FORMAL_SHEETS.opening, ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']), ['cutoverAt', 'companyId', 'companyName', 'openingCash', 'source', 'includeInIncome', 'includeInExpense', 'createdAt']); }
 function company_(id) { return FORMAL_COMPANIES[requireCompanyId_(id)]; }
-function requireCompanyId_(id) { if (!FORMAL_COMPANIES[id]) throw coded_('invalid_company', 'Unknown company'); return id; }
+function requireCompanyId_(id) { if (!FORMAL_COMPANIES[id]) throw coded_('invalid_company', '找不到這間公司'); return id; }
 function requireFormalApiKey_(payload) { var expected = PropertiesService.getScriptProperties().getProperty(FORMAL_API_KEY_PROPERTY); if (!expected) throw coded_('formal_api_key_not_configured', 'Set FORMAL_API_KEY in Script Properties'); if (!payload || String(payload.formalApiKey || '') !== expected) throw coded_('unauthorized_formal_request', 'Invalid formal backend credential'); }
 function sheet_(name, headers) { var sheet = spreadsheet_().getSheetByName(name); if (!sheet) throw new Error('Missing V2 sheet: ' + name); if (sheet.getLastRow() === 0) sheet.getRange(1, 1, 1, headers.length).setValues([headers]); return sheet; }
 function header_(sheet, labels) { sheet.getRange(1, 1, 1, labels.length).setValues([labels]); }
@@ -319,7 +319,7 @@ function append_(sheet, headers, obj) { sheet.appendRow(headers.map(function(h) 
 function update_(sheet, headers, obj) { var rows = sheet.getDataRange().getValues(); for (var i = 1; i < rows.length; i += 1) if (String(rows[i][0]) === String(obj.id)) { sheet.getRange(i + 1, 1, 1, headers.length).setValues([headers.map(function(h) { return obj[h] == null ? '' : obj[h]; })]); return; } throw new Error('Record disappeared'); }
 function objects_(sheet, headers) { if (sheet.getLastRow() < 2) return []; return sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().map(function(row) { var o = {}; headers.forEach(function(h, i) { o[h] = row[i]; }); return o; }); }
 function audit_(companyId, type, entityId, action, before, after, reason, actor) { append_(sheet_(FORMAL_SHEETS.audit, FORMAL_AUDIT_HEADERS), FORMAL_AUDIT_HEADERS, { id: 'AUD-' + Utilities.getUuid(), companyId: companyId, entityType: type, entityId: entityId, action: action, before: before, after: after, reason: reason, actorId: actor, createdAt: now_() }); }
-function amount_(v) { var n = Number(v); if (!Number.isInteger(n) || n < 0) throw coded_('validation_error', 'Amount must be a non-negative integer'); return n; }
+function amount_(v) { var n = Number(v); if (!Number.isInteger(n) || n < 0) throw coded_('validation_error', '金額必須是不小於 0 的整數'); return n; }
 // Sheets silently reinterprets a text cell as a date if it ever looked date-like, so
 // getValues() can hand back a Date object where a plain reason string was written.
 // Treat that as "no reason on file" instead of leaking Date#toString() into the UI.
